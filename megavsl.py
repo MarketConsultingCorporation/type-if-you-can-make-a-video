@@ -625,15 +625,41 @@ def pip_install(packages: List[str]) -> None:
             return " | ".join(error_lines[-3:])
         return " | ".join(lines[-3:])
 
+    def run_pip(args: List[str]) -> subprocess.CompletedProcess:
+        return subprocess.run([sys.executable, "-m", "pip", *args], capture_output=True, text=True)
+
     installed = []
     failed = []
-    for package in sorted(set(packages)):
-        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
+    packages = sorted(set(packages))
+
+    # Keep packaging tools current so Python 3.12 installs prefer wheels and avoid legacy build paths.
+    bootstrap = [
+        ["install", "--upgrade", "pip", "setuptools", "wheel"],
+    ]
+    if "chatterbox-tts" in packages and sys.version_info >= (3, 12):
+        bootstrap.append(["install", "--upgrade", "--prefer-binary", "--only-binary=:all:", "numpy>=1.26"])
+
+    for args in bootstrap:
+        run_pip(args)
+
+    for package in packages:
+        cmd = ["install", "--upgrade", "--prefer-binary", package]
+        proc = run_pip(cmd)
         if proc.returncode == 0:
             installed.append(package)
             continue
-        failed.append((package, summarize_pip_error(proc.stderr, proc.stdout)))
+
+        reason = summarize_pip_error(proc.stderr, proc.stdout)
+
+        # Python 3.12 can fail via build-isolation numpy resolution for some packages.
+        if package == "chatterbox-tts" and sys.version_info >= (3, 12) and "Failed to build 'numpy'" in (proc.stderr + proc.stdout):
+            retry = run_pip(["install", "--upgrade", "--prefer-binary", "--no-build-isolation", package])
+            if retry.returncode == 0:
+                installed.append(package)
+                continue
+            reason = summarize_pip_error(retry.stderr, retry.stdout)
+
+        failed.append((package, reason))
 
     if failed:
         lines = ["Some packages failed to install."]
@@ -643,6 +669,8 @@ def pip_install(packages: List[str]) -> None:
         for package, reason in failed:
             lines.append(f"- {package}: {reason}")
         lines.append("")
+        if sys.version_info >= (3, 12):
+            lines.append("Python 3.12 note: if chatterbox still fails, open a clean venv and run Setup again so pip can pick compatible binary wheels.")
         lines.append(f"Tip: voice setup is most reliable on Python {RECOMMENDED_PYTHON}.")
         raise RuntimeError("\n".join(lines))
 
