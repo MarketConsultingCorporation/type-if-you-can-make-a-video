@@ -746,7 +746,17 @@ class ChatterboxTurboEngine:
                 pass
         self._device = device
         self._ta = ta
-        self._model = ChatterboxTurboTTS.from_pretrained(device=device)
+        try:
+            self._model = ChatterboxTurboTTS.from_pretrained(device=device)
+        except Exception as exc:
+            detail = str(exc)
+            if "token is required" in detail.lower() or "hugging face" in detail.lower() or "huggingface" in detail.lower():
+                raise RuntimeError(
+                    "Warm Up Voice needs Hugging Face access for model download.\n\n"
+                    "Fix: run `huggingface-cli login` in your terminal and paste your token, or set HF_TOKEN.\n"
+                    "Create a token at https://huggingface.co/settings/tokens and grant read access."
+                )
+            raise RuntimeError("Could not load Chatterbox-Turbo model.\n\n" + detail)
         return device
 
     def warmup(self) -> str:
@@ -955,7 +965,9 @@ class TypeToVideoApp:
 
         tools_menu = tk.Menu(menu, tearoff=False)
         tools_menu.add_command(label="Setup", command=self.setup_dialog)
+        tools_menu.add_command(label="Pick ffmpeg", command=self.choose_ffmpeg)
         tools_menu.add_command(label="Warm Up Voice", command=self.warmup_chatterbox)
+        tools_menu.add_command(label="Test Voice", command=self.test_voice_dialog)
         tools_menu.add_command(label="Make Slides", command=self.build_slides_from_script)
         tools_menu.add_command(label="Import Audio", command=self.import_audio_and_transcribe)
         tools_menu.add_command(label="Record Audio", command=self.record_audio_and_transcribe)
@@ -971,14 +983,7 @@ class TypeToVideoApp:
 
         topbar = ttk.Frame(self.root)
         topbar.pack(fill="x", padx=8, pady=8)
-        ttk.Button(topbar, text="Setup", command=self.setup_dialog).pack(side="left")
-        ttk.Button(topbar, text="Pick ffmpeg", command=self.choose_ffmpeg).pack(side="left", padx=4)
-        ttk.Button(topbar, text="Warm Up Voice", command=self.warmup_chatterbox).pack(side="left", padx=4)
-        ttk.Button(topbar, text="Import Audio", command=self.import_audio_and_transcribe).pack(side="left", padx=4)
-        ttk.Button(topbar, text="Record Audio", command=self.record_audio_and_transcribe).pack(side="left", padx=4)
-        ttk.Button(topbar, text="Rewrite", command=self.ai_rewrite_raw_script).pack(side="left", padx=4)
         ttk.Button(topbar, text="Make Slides", command=self.build_slides_from_script).pack(side="left", padx=4)
-        ttk.Button(topbar, text="Test Voice", command=self.test_voice_dialog).pack(side="left", padx=4)
         ttk.Button(topbar, text="Export MP4", command=self.export_mp4_dialog).pack(side="left", padx=10)
 
         ttk.Label(topbar, text="Voice Sample").pack(side="left", padx=(18, 6))
