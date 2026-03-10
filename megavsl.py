@@ -85,7 +85,7 @@ DEFAULT_WIDTH = 1280
 DEFAULT_HEIGHT = 720
 TITLE_FONT = ("Arial", 20, "bold")
 BODY_FONT = ("Arial", 12)
-RECOMMENDED_PYTHON = "3.11"
+RECOMMENDED_PYTHON = "3.12"
 
 
 @dataclass
@@ -515,7 +515,8 @@ def draw_text_block(draw, box: Tuple[int, int, int, int], text: str, font, fill,
 def render_slide_to_image(slide: Slide, canvas_size: Tuple[int, int]) -> Optional[Image.Image]:
     if not PIL_AVAILABLE:
         return None
-    width, height = canvas_size
+    width = max(1, int(canvas_size[0]))
+    height = max(1, int(canvas_size[1]))
     img = Image.new("RGB", (width, height), hex_to_rgb(PREVIEW_BG))
     if slide.background and os.path.exists(slide.background):
         try:
@@ -524,20 +525,31 @@ def render_slide_to_image(slide: Slide, canvas_size: Tuple[int, int]) -> Optiona
             img.paste(bg)
         except Exception:
             pass
+
+    def clamped_rect(x0: int, y0: int, x1: int, y1: int) -> Tuple[int, int, int, int]:
+        x0 = max(0, min(width - 1, x0))
+        y0 = max(0, min(height - 1, y0))
+        x1 = max(x0, min(width - 1, x1))
+        y1 = max(y0, min(height - 1, y1))
+        return (x0, y0, x1, y1)
+
     overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     odraw = ImageDraw.Draw(overlay)
     r, g, b = hex_to_rgb(slide.style.overlay_color)
     alpha = max(0, min(255, int(slide.style.overlay_alpha)))
-    odraw.rounded_rectangle((42, 42, width - 42, 175), radius=18, fill=(r, g, b, alpha))
-    odraw.rounded_rectangle((42, height - 320, width - 42, height - 42), radius=20, fill=(r, g, b, alpha))
+    top_rect = clamped_rect(42, 42, width - 42, min(175, height - 42))
+    bottom_rect = clamped_rect(42, height - 320, width - 42, height - 42)
+    odraw.rounded_rectangle(top_rect, radius=18, fill=(r, g, b, alpha))
+    odraw.rounded_rectangle(bottom_rect, radius=20, fill=(r, g, b, alpha))
+
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
     draw = ImageDraw.Draw(img)
     title_font = load_font(slide.style.title_font, slide.style.title_size)
     body_font = load_font(slide.style.body_font, slide.style.body_size)
     fill = hex_to_rgb(slide.style.fg_color)
-    draw_text_block(draw, (70, 72, width - 140, 88), slide.title, title_font, fill, slide.style.title_align, spacing=6)
+    draw_text_block(draw, (70, 72, max(1, width - 140), max(1, min(88, height - 80))), slide.title, title_font, fill, slide.style.title_align, spacing=6)
     body = slide.body.strip() or slide.narration.strip() or "Slide text"
-    draw_text_block(draw, (72, height - 292, width - 144, 220), body, body_font, fill, slide.style.body_align, spacing=8)
+    draw_text_block(draw, (72, max(0, height - 292), max(1, width - 144), max(1, min(220, height - 72))), body, body_font, fill, slide.style.body_align, spacing=8)
     return img
 
 
