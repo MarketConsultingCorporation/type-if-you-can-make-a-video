@@ -16,3 +16,4 @@ voices/
 .cache/
 *.onnx
 *.safetensors
+.venv311
