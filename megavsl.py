@@ -603,10 +603,36 @@ def detect_optional_missing_packages() -> List[str]:
 
 
 def pip_install(packages: List[str]) -> None:
-    cmd = [sys.executable, "-m", "pip", "install", "--upgrade"] + packages
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "pip install failed")
+    def summarize_pip_error(stderr: str, stdout: str) -> str:
+        combined = "\n".join([stderr or "", stdout or ""]).strip()
+        if not combined:
+            return "pip install failed"
+        lines = [line.strip() for line in combined.splitlines() if line.strip()]
+        error_lines = [line for line in lines if line.upper().startswith("ERROR")]
+        if error_lines:
+            return " | ".join(error_lines[-3:])
+        return " | ".join(lines[-3:])
+
+    installed = []
+    failed = []
+    for package in sorted(set(packages)):
+        cmd = [sys.executable, "-m", "pip", "install", "--upgrade", package]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode == 0:
+            installed.append(package)
+            continue
+        failed.append((package, summarize_pip_error(proc.stderr, proc.stdout)))
+
+    if failed:
+        lines = ["Some packages failed to install."]
+        if installed:
+            lines.append("Installed: " + ", ".join(installed))
+        lines.append("Failed:")
+        for package, reason in failed:
+            lines.append(f"- {package}: {reason}")
+        lines.append("")
+        lines.append(f"Tip: voice setup is most reliable on Python {RECOMMENDED_PYTHON}.")
+        raise RuntimeError("\n".join(lines))
 
 
 def resolve_ffmpeg(configured_path: str) -> str:
